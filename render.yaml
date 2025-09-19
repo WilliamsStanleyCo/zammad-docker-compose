@@ -94,7 +94,6 @@ services:
     plan: standard
     autoDeploy: false
 
-  # Managed Key Value (no autoDeploy field)
   - name: zammad-redis
     type: keyvalue
     plan: standard
@@ -103,6 +102,7 @@ services:
 envVarGroups:
   - name: zammad-common
     envVars:
+      # --- Postgres (Neon) ---
       - key: POSTGRESQL_HOST
         value: "__REQUIRED__"
       - key: POSTGRESQL_PORT
@@ -110,13 +110,13 @@ envVarGroups:
       - key: POSTGRESQL_USER
         value: "__REQUIRED__"
       - key: POSTGRESQL_PASS
-        value: "__REQUIRED__"
-        sync: false
+        sync: false          # set in dashboard; no value here
       - key: POSTGRESQL_DB
         value: "__REQUIRED__"
       - key: POSTGRESQL_OPTIONS
         value: "?pool=50&sslmode=require"
 
+      # --- Elasticsearch (Elastic Cloud) ---
       - key: ELASTICSEARCH_ENABLED
         value: "true"
       - key: ELASTICSEARCH_SCHEMA
@@ -128,12 +128,13 @@ envVarGroups:
       - key: ELASTICSEARCH_USER
         value: "__REQUIRED__"
       - key: ELASTICSEARCH_PASS
-        value: "__REQUIRED__"
-        sync: false
+        sync: false          # set in dashboard; no value here
 
+      # --- Cache ---
       - key: MEMCACHE_SERVERS
         value: zammad-memcached:11211
 
+      # --- App/general ---
       - key: ZAMMAD_FQDN
         value: "__REQUIRED__"
       - key: ZAMMAD_HTTP_TYPE
