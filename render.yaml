@@ -21,7 +21,7 @@ services:
     runtime: image
     image:
       url: ghcr.io/zammad/zammad:6.5.1
-    dockerCommand: zammad-railsserver
+    dockerCommand: /usr/local/bin/zammad-railsserver
     plan: standard
     autoDeploy: false
     envVars:
@@ -31,5 +31,5 @@ services:
           type: keyvalue
           name: zammad-redis
           property: connectionString
-      - key: RAILS_PORT
-        value: ${PORT}
+      - key: RAILS_PORT gg
+        value: ${PORTk
