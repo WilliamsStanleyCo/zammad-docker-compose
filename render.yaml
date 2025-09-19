@@ -15,7 +15,19 @@ services:
     plan: starter
     autoDeploy: false
 
-  # Rails app (internal) — bind to Render's $PORT
+  # Database initialization - runs once to set up Zammad
+  - name: zammad-init
+    type: pserv
+    runtime: image
+    image:
+      url: ghcr.io/zammad/zammad:6.5.1
+    dockerCommand: /docker-entrypoint.sh zammad-init
+    plan: starter
+    autoDeploy: false
+    envVars:
+      - fromGroup: zammad-common
+
+  # Rails app (internal) — starts after init completes
   - name: zammad-railsserver
     type: pserv
     runtime: image
@@ -31,5 +43,21 @@ services:
           type: keyvalue
           name: zammad-redis
           property: connectionString
-      - key: RAILS_PORT
-        value: 12321321
+
+  # Nginx web server — this is what exposes the port
+  - name: zammad-nginx
+    type: web
+    runtime: image
+    image:
+      url: ghcr.io/zammad/zammad:6.5.1
+    dockerCommand: /docker-entrypoint.sh zammad-nginx
+    plan: standard
+    envVars:
+      - fromGroup: zammad-common
+      - key: REDIS_URL
+        fromService:
+          type: keyvalue
+          name: zammad-redis
+          property: connectionString
+      - key: NGINX_PORT
+        value: ${PORT}
