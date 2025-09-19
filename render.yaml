@@ -32,4 +32,4 @@ services:
           name: zammad-redis
           property: connectionString
       - key: RAILS_PORT
-        value: ${PORT}
+        value: 12321321
