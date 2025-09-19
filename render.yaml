@@ -1,15 +1,11 @@
 services:
-  # ──────────────────────────
-  # Redis-compatible KV (managed)
-  # ──────────────────────────
+  # Redis (managed)
   - name: zammad-redis
     type: keyvalue
     plan: starter
     ipAllowList: []
 
-  # ──────────────────────────
   # Memcached (internal)
-  # ──────────────────────────
   - name: zammad-memcached
     type: pserv
     runtime: image
@@ -19,33 +15,18 @@ services:
     plan: starter
     autoDeploy: false
 
-  # ──────────────────────────
-  # Rails app (internal) with preflight checks
-  # ──────────────────────────
+  # Rails app (internal) — bind to Render's $PORT
   - name: zammad-railsserver
     type: pserv
     runtime: image
     image:
       url: ghcr.io/zammad/zammad:6.5.1
-    # Preflight: verify required env vars, test TCP to Postgres & Memcached, ping Redis,
-    # then start Rails binding to Render's $PORT.
-    dockerCommand: /bin/sh -lc 'echo "===== railsserver preflight ====="; \
-      for v in POSTGRESQL_HOST POSTGRESQL_PORT POSTGRESQL_USER POSTGRESQL_PASS POSTGRESQL_DB REDIS_URL MEMCACHE_SERVERS; do \
-        eval val=\${$v}; if [ -z "$val" ]; then echo "MISSING: $v" && missing=1; else echo "$v=$val"; fi; \
-      done; \
-      [ "${missing:-0}" -eq 0 ] || { echo "❌ Missing required env(s)."; exit 2; }; \
-      bash -lc "cat </dev/null >/dev/tcp/$POSTGRESQL_HOST/$POSTGRESQL_PORT" >/dev/null 2>&1 \
-        && echo "Postgres TCP ✅" || { echo "Postgres TCP ❌"; exit 2; }; \
-      ruby -e '\''require "redis"; r=Redis.new(url: ENV["REDIS_URL"]); puts "Redis #{r.ping} ✅"'\'' >/dev/null 2>&1 \
-        || { echo "Redis ping ❌"; exit 2; }; \
-      bash -lc "cat </dev/null >/dev/tcp/zammad-memcached/11211" >/dev/null 2>&1 \
-        && echo "Memcached TCP ✅" || { echo "Memcached TCP ❌"; exit 2; }; \
-      echo "Starting Rails… PORT=$PORT"; RAILS_PORT=$PORT exec /usr/local/bin/zammad-railsserver'
+    dockerCommand: /bin/sh -lc 'export RAILS_PORT=$PORT; exec /usr/local/bin/zammad-railsserver'
     plan: standard
     autoDeploy: false
     envVars:
-      - fromGroup: zammad-common         # your existing env group (must be in same Project/Environment)
-      - key: REDIS_URL                   # inject Redis connection from the managed Key Value service
+      - fromGroup: zammad-common
+      - key: REDIS_URL
         fromService:
           type: keyvalue
           name: zammad-redis
