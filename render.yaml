@@ -1,0 +1,95 @@
+services:
+  - name: zammad-web
+    type: web
+    env: docker
+    dockerImage: ghcr.io/zammad/zammad:6.5.1
+    startCommand: bash -lc 'export NGINX_PORT=${PORT}; zammad-railsserver & zammad-websocket & exec zammad-nginx'
+    plan: standard
+    autoDeploy: true
+    envVarGroups:
+      - zammad-common
+    envVars:
+      - key: REDIS_URL
+        fromService:
+          type: redis
+          name: zammad-redis
+          property: connectionString
+    disks:
+      - name: zammad-storage
+        mountPath: /opt/zammad/storage
+        sizeGB: 40
+    postDeployCommand: zammad-init
+
+  - name: zammad-scheduler
+    type: worker
+    env: docker
+    dockerImage: ghcr.io/zammad/zammad:6.5.1
+    startCommand: zammad-scheduler
+    plan: starter
+    autoDeploy: true
+    envVarGroups:
+      - zammad-common
+    envVars:
+      - key: REDIS_URL
+        fromService:
+          type: redis
+          name: zammad-redis
+          property: connectionString
+
+  - name: zammad-redis
+    type: redis
+    plan: starter
+
+  - name: zammad-memcached
+    type: privateService
+    env: docker
+    dockerImage: memcached:1.6.39-alpine
+    startCommand: memcached -m 256 -o modern
+    plan: starter
+    autoDeploy: true
+    ports:
+      - port: 11211
+        protocol: tcp
+
+envVarGroups:
+  - name: zammad-common
+    envVars:
+      # Postgres (Neon)
+      - key: POSTGRESQL_HOST
+        value: your-neon-host.neon.tech
+      - key: POSTGRESQL_PORT
+        value: 5432
+      - key: POSTGRESQL_USER
+        value: your_user
+      - key: POSTGRESQL_PASS
+        value: your_password
+      - key: POSTGRESQL_DB
+        value: your_db
+      - key: POSTGRESQL_OPTIONS
+        value: "?pool=50&sslmode=require"
+
+      # Elasticsearch (Elastic Cloud)
+      - key: ELASTICSEARCH_ENABLED
+        value: "true"
+      - key: ELASTICSEARCH_SCHEMA
+        value: https
+      - key: ELASTICSEARCH_HOST
+        value: your-es-endpoint.elastic-cloud.com
+      - key: ELASTICSEARCH_PORT
+        value: 443
+      - key: ELASTICSEARCH_USER
+        value: elastic
+      - key: ELASTICSEARCH_PASS
+        value: your_generated_password
+
+      # Cache
+      - key: MEMCACHE_SERVERS
+        value: zammad-memcached:11211
+
+      # App/general
+      - key: ZAMMAD_FQDN
+        value: help.yourdomain.tld
+      - key: ZAMMAD_HTTP_TYPE
+        value: https
+      - key: TZ
+        value: UTC
