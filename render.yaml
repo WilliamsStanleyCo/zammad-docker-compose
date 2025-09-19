@@ -43,7 +43,7 @@ services:
     image:
       url: ghcr.io/zammad/zammad:6.5.1
     dockerCommand: zammad-scheduler
-    plan: standard
+    plan: starter
     autoDeploy: false
     envVars:
       - key: REDIS_URL
@@ -75,7 +75,7 @@ services:
     image:
       url: ghcr.io/zammad/zammad:6.5.1
     dockerCommand: zammad-websocket
-    plan: standard
+    plan: starter
     autoDeploy: false
     envVars:
       - key: REDIS_URL
@@ -91,12 +91,12 @@ services:
     image:
       url: memcached:1.6.39-alpine
     dockerCommand: memcached -m 256 -o modern
-    plan: standard
+    plan: starter
     autoDeploy: false
 
   - name: zammad-redis
     type: keyvalue
-    plan: standard
+    plan: starter
     ipAllowList: []
 
 envVarGroups:
