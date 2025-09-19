@@ -20,7 +20,7 @@ services:
     disk:
       name: zammad-storage
       mountPath: /opt/zammad/storage
-      sizeGB: 40
+      sizeGB: 100
     preDeployCommand: >
       bash -lc '
         set -euo pipefail
