@@ -1,9 +1,4 @@
-# render.yaml
-
 services:
-  # ──────────────────────────
-  # Public entrypoint (NGINX)
-  # ──────────────────────────
   - name: zammad-nginx
     type: web
     runtime: image
@@ -26,7 +21,6 @@ services:
       name: zammad-storage
       mountPath: /opt/zammad/storage
       sizeGB: 40
-    # Fail fast if required envs aren’t set, then run init.
     preDeployCommand: >
       bash -lc '
         set -euo pipefail
@@ -43,9 +37,6 @@ services:
         zammad-init
       '
 
-  # ──────────────────────────
-  # Background job scheduler
-  # ──────────────────────────
   - name: zammad-scheduler
     type: worker
     runtime: image
@@ -62,9 +53,6 @@ services:
           property: connectionString
       - fromGroup: zammad-common
 
-  # ──────────────────────────
-  # Rails app (internal)
-  # ──────────────────────────
   - name: zammad-railsserver
     type: pserv
     runtime: image
@@ -81,9 +69,6 @@ services:
           property: connectionString
       - fromGroup: zammad-common
 
-  # ──────────────────────────
-  # Websocket app (internal)
-  # ──────────────────────────
   - name: zammad-websocket
     type: pserv
     runtime: image
@@ -100,9 +85,6 @@ services:
           property: connectionString
       - fromGroup: zammad-common
 
-  # ──────────────────────────
-  # Memcached (internal)
-  # ──────────────────────────
   - name: zammad-memcached
     type: pserv
     runtime: image
@@ -112,22 +94,15 @@ services:
     plan: standard
     autoDeploy: false
 
-  # ──────────────────────────
-  # Redis-compatible KV (internal)
-  # ──────────────────────────
+  # Managed Key Value (no autoDeploy field)
   - name: zammad-redis
     type: keyvalue
     plan: standard
     ipAllowList: []
-    autoDeploy: false
 
-# ───────────────────────────────
-# Shared configuration variables
-# ───────────────────────────────
 envVarGroups:
   - name: zammad-common
     envVars:
-      # --- Postgres (Neon) ---
       - key: POSTGRESQL_HOST
         value: "__REQUIRED__"
       - key: POSTGRESQL_PORT
@@ -136,13 +111,12 @@ envVarGroups:
         value: "__REQUIRED__"
       - key: POSTGRESQL_PASS
         value: "__REQUIRED__"
-        sync: false        # keep secret in dashboard
+        sync: false
       - key: POSTGRESQL_DB
         value: "__REQUIRED__"
       - key: POSTGRESQL_OPTIONS
         value: "?pool=50&sslmode=require"
 
-      # --- Elasticsearch (Elastic Cloud) ---
       - key: ELASTICSEARCH_ENABLED
         value: "true"
       - key: ELASTICSEARCH_SCHEMA
@@ -155,13 +129,11 @@ envVarGroups:
         value: "__REQUIRED__"
       - key: ELASTICSEARCH_PASS
         value: "__REQUIRED__"
-        sync: false        # keep secret in dashboard
+        sync: false
 
-      # --- Cache ---
       - key: MEMCACHE_SERVERS
         value: zammad-memcached:11211
 
-      # --- App/general ---
       - key: ZAMMAD_FQDN
         value: "__REQUIRED__"
       - key: ZAMMAD_HTTP_TYPE
