@@ -9,30 +9,39 @@ services:
     runtime: image
     image:
       url: ghcr.io/zammad/zammad:6.5.1
-    # Render injects $PORT; pass it to zammad-nginx
     dockerCommand: bash -lc 'export NGINX_PORT=${PORT}; exec zammad-nginx'
     plan: standard
     healthCheckPath: /
+    autoDeploy: false
     envVars:
-      # Let Zammad know it's sitting behind HTTPS
       - key: NGINX_SERVER_SCHEME
         value: https
-      # Redis connection from Render Key Value (internal)
       - key: REDIS_URL
         fromService:
           type: keyvalue
           name: zammad-redis
           property: connectionString
-      # Pull all shared app env
       - fromGroup: zammad-common
-    # Persistent files (uploads, assets, etc.)
     disk:
       name: zammad-storage
       mountPath: /opt/zammad/storage
       sizeGB: 40
-    # Run DB migrations / ES index setup once per deploy
-    preDeployCommand: ""
-    postDeployCommand: zammad-init
+    # Fail fast if required envs aren’t set, then run init.
+    preDeployCommand: >
+      bash -lc '
+        set -euo pipefail
+        req=(POSTGRESQL_HOST POSTGRESQL_USER POSTGRESQL_PASS POSTGRESQL_DB
+             ELASTICSEARCH_HOST ELASTICSEARCH_USER ELASTICSEARCH_PASS
+             ZAMMAD_FQDN ZAMMAD_HTTP_TYPE)
+        for v in "${req[@]}"; do
+          val="${!v:-}"
+          if [ -z "$val" ] || [ "$val" = "__REQUIRED__" ]; then
+            echo "❌ Missing required env: $v"; exit 2
+          fi
+        done
+        echo "✅ Env looks good; running zammad-init…"
+        zammad-init
+      '
 
   # ──────────────────────────
   # Background job scheduler
@@ -44,6 +53,7 @@ services:
       url: ghcr.io/zammad/zammad:6.5.1
     dockerCommand: zammad-scheduler
     plan: standard
+    autoDeploy: false
     envVars:
       - key: REDIS_URL
         fromService:
@@ -62,6 +72,7 @@ services:
       url: ghcr.io/zammad/zammad:6.5.1
     dockerCommand: zammad-railsserver
     plan: standard
+    autoDeploy: false
     envVars:
       - key: REDIS_URL
         fromService:
@@ -80,6 +91,7 @@ services:
       url: ghcr.io/zammad/zammad:6.5.1
     dockerCommand: zammad-websocket
     plan: standard
+    autoDeploy: false
     envVars:
       - key: REDIS_URL
         fromService:
@@ -98,6 +110,7 @@ services:
       url: memcached:1.6.39-alpine
     dockerCommand: memcached -m 256 -o modern
     plan: standard
+    autoDeploy: false
 
   # ──────────────────────────
   # Redis-compatible KV (internal)
@@ -105,8 +118,8 @@ services:
   - name: zammad-redis
     type: keyvalue
     plan: standard
-    # Empty list = only allow connections from inside Render’s private network
     ipAllowList: []
+    autoDeploy: false
 
 # ───────────────────────────────
 # Shared configuration variables
@@ -115,17 +128,17 @@ envVarGroups:
   - name: zammad-common
     envVars:
       # --- Postgres (Neon) ---
-      # Use your Neon pooled endpoint (recommended).
       - key: POSTGRESQL_HOST
-        value: your-neon-host.neon.tech
+        value: "__REQUIRED__"
       - key: POSTGRESQL_PORT
-        value: 5432
+        value: "5432"
       - key: POSTGRESQL_USER
-        value: your_user
+        value: "__REQUIRED__"
       - key: POSTGRESQL_PASS
-        value: your_password
+        value: "__REQUIRED__"
+        sync: false        # keep secret in dashboard
       - key: POSTGRESQL_DB
-        value: your_db
+        value: "__REQUIRED__"
       - key: POSTGRESQL_OPTIONS
         value: "?pool=50&sslmode=require"
 
@@ -135,22 +148,22 @@ envVarGroups:
       - key: ELASTICSEARCH_SCHEMA
         value: https
       - key: ELASTICSEARCH_HOST
-        value: your-es-endpoint.elastic-cloud.com
+        value: "__REQUIRED__"
       - key: ELASTICSEARCH_PORT
-        value: 443
+        value: "443"
       - key: ELASTICSEARCH_USER
-        value: elastic
+        value: "__REQUIRED__"
       - key: ELASTICSEARCH_PASS
-        value: your_generated_password
+        value: "__REQUIRED__"
+        sync: false        # keep secret in dashboard
 
       # --- Cache ---
-      # Zammad expects host:port; private DNS works inside the Render network
       - key: MEMCACHE_SERVERS
         value: zammad-memcached:11211
 
       # --- App/general ---
       - key: ZAMMAD_FQDN
-        value: help.yourdomain.tld
+        value: "__REQUIRED__"
       - key: ZAMMAD_HTTP_TYPE
         value: https
       - key: TZ
