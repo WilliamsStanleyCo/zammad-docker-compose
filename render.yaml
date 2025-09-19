@@ -1,92 +1,121 @@
+# render.yaml
+
 services:
+  # ──────────────────────────
+  # Public entrypoint (NGINX)
+  # ──────────────────────────
   - name: zammad-nginx
     type: web
-    env: docker
-    dockerImage: ghcr.io/zammad/zammad:6.5.1
-    startCommand: bash -lc 'export NGINX_PORT=${PORT}; exec zammad-nginx'
+    runtime: image
+    image:
+      url: ghcr.io/zammad/zammad:6.5.1
+    # Render injects $PORT; pass it to zammad-nginx
+    dockerCommand: bash -lc 'export NGINX_PORT=${PORT}; exec zammad-nginx'
     plan: standard
-    autoDeploy: true
-    envVarGroups:
-      - zammad-common
+    healthCheckPath: /
     envVars:
+      # Let Zammad know it's sitting behind HTTPS
+      - key: NGINX_SERVER_SCHEME
+        value: https
+      # Redis connection from Render Key Value (internal)
       - key: REDIS_URL
         fromService:
-          type: redis
+          type: keyvalue
           name: zammad-redis
           property: connectionString
-    disks:
-      - name: zammad-storage
-        mountPath: /opt/zammad/storage
-        sizeGB: 40
+      # Pull all shared app env
+      - fromGroup: zammad-common
+    # Persistent files (uploads, assets, etc.)
+    disk:
+      name: zammad-storage
+      mountPath: /opt/zammad/storage
+      sizeGB: 40
+    # Run DB migrations / ES index setup once per deploy
+    preDeployCommand: ""
     postDeployCommand: zammad-init
 
+  # ──────────────────────────
+  # Background job scheduler
+  # ──────────────────────────
   - name: zammad-scheduler
     type: worker
-    env: docker
-    dockerImage: ghcr.io/zammad/zammad:6.5.1
-    startCommand: zammad-scheduler
+    runtime: image
+    image:
+      url: ghcr.io/zammad/zammad:6.5.1
+    dockerCommand: zammad-scheduler
     plan: standard
-    autoDeploy: true
-    envVarGroups:
-      - zammad-common
     envVars:
       - key: REDIS_URL
         fromService:
-          type: redis
+          type: keyvalue
           name: zammad-redis
           property: connectionString
+      - fromGroup: zammad-common
 
-  - name: zammad-redis
-    type: redis
-    plan: standard
-
-  - name: zammad-memcached
-    type: private
-    env: docker
-    dockerImage: memcached:1.6.39-alpine
-    startCommand: memcached -m 256 -o modern
-    plan: standard
-    autoDeploy: true
-    ports:
-      - port: 11211
-        protocol: tcp
-
+  # ──────────────────────────
+  # Rails app (internal)
+  # ──────────────────────────
   - name: zammad-railsserver
-    type: private
-    env: docker
-    dockerImage: ghcr.io/zammad/zammad:6.5.1
-    startCommand: zammad-railsserver
+    type: pserv
+    runtime: image
+    image:
+      url: ghcr.io/zammad/zammad:6.5.1
+    dockerCommand: zammad-railsserver
     plan: standard
-    autoDeploy: true
-    envVarGroups:
-      - zammad-common
     envVars:
       - key: REDIS_URL
         fromService:
-          type: redis
+          type: keyvalue
           name: zammad-redis
           property: connectionString
+      - fromGroup: zammad-common
 
+  # ──────────────────────────
+  # Websocket app (internal)
+  # ──────────────────────────
   - name: zammad-websocket
-    type: private
-    env: docker
-    dockerImage: ghcr.io/zammad/zammad:6.5.1
-    startCommand: zammad-websocket
+    type: pserv
+    runtime: image
+    image:
+      url: ghcr.io/zammad/zammad:6.5.1
+    dockerCommand: zammad-websocket
     plan: standard
-    autoDeploy: true
-    envVarGroups:
-      - zammad-common
     envVars:
       - key: REDIS_URL
         fromService:
-          type: redis
+          type: keyvalue
           name: zammad-redis
           property: connectionString
+      - fromGroup: zammad-common
 
+  # ──────────────────────────
+  # Memcached (internal)
+  # ──────────────────────────
+  - name: zammad-memcached
+    type: pserv
+    runtime: image
+    image:
+      url: memcached:1.6.39-alpine
+    dockerCommand: memcached -m 256 -o modern
+    plan: standard
+
+  # ──────────────────────────
+  # Redis-compatible KV (internal)
+  # ──────────────────────────
+  - name: zammad-redis
+    type: keyvalue
+    plan: standard
+    # Empty list = only allow connections from inside Render’s private network
+    ipAllowList: []
+
+# ───────────────────────────────
+# Shared configuration variables
+# ───────────────────────────────
 envVarGroups:
   - name: zammad-common
     envVars:
-      # Postgres (Neon)
+      # --- Postgres (Neon) ---
+      # Use your Neon pooled endpoint (recommended).
       - key: POSTGRESQL_HOST
         value: your-neon-host.neon.tech
       - key: POSTGRESQL_PORT
@@ -100,7 +129,7 @@ envVarGroups:
       - key: POSTGRESQL_OPTIONS
         value: "?pool=50&sslmode=require"
 
-      # Elasticsearch (Elastic Cloud)
+      # --- Elasticsearch (Elastic Cloud) ---
       - key: ELASTICSEARCH_ENABLED
         value: "true"
       - key: ELASTICSEARCH_SCHEMA
@@ -114,14 +143,15 @@ envVarGroups:
       - key: ELASTICSEARCH_PASS
         value: your_generated_password
 
-      # Cache
+      # --- Cache ---
+      # Zammad expects host:port; private DNS works inside the Render network
       - key: MEMCACHE_SERVERS
         value: zammad-memcached:11211
 
-      # App/general
+      # --- App/general ---
       - key: ZAMMAD_FQDN
         value: help.yourdomain.tld
       - key: ZAMMAD_HTTP_TYPE
         value: https
       - key: TZ
-        value: UTC
+        value: Africa/Addis_Ababa
