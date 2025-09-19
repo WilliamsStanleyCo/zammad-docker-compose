@@ -41,7 +41,7 @@ services:
     plan: starter
 
   - name: zammad-memcached
-    type: privateService
+    type: private
     env: docker
     dockerImage: memcached:1.6.39-alpine
     startCommand: memcached -m 256 -o modern
