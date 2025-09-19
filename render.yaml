@@ -1,92 +1,15 @@
 services:
-  # Public entry (nginx)
-  - name: zammad-nginx
-    type: web
-    runtime: image
-    image:
-      url: ghcr.io/zammad/zammad:6.5.1
-    # Render provides $PORT; expose it to zammad-nginx and point upstreams to pservs' $PORT
-    dockerCommand: >
-      bash -lc "export NGINX_PORT=${PORT}
-                export NGINX_RAILS_HOST=zammad-railsserver
-                export NGINX_RAILS_PORT=10000
-                export NGINX_WEBSOCKET_HOST=zammad-websocket
-                export NGINX_WEBSOCKET_PORT=10000
-                exec /usr/local/bin/zammad-nginx"
-    plan: standard
-    healthCheckPath: /
-    autoDeploy: false
-    envVars:
-      - fromGroup: zammad-common
-      - key: REDIS_URL
-        fromService:
-          type: keyvalue
-          name: zammad-redis
-          property: connectionString
-    disk:
-      name: zammad-storage
-      mountPath: /opt/zammad/storage
-      sizeGB: 100
-
-  # Background scheduler
-  - name: zammad-scheduler
-    type: worker
-    runtime: image
-    image:
-      url: ghcr.io/zammad/zammad:6.5.1
-    dockerCommand: /usr/local/bin/zammad-scheduler
+  # ──────────────────────────
+  # Redis-compatible KV (managed)
+  # ──────────────────────────
+  - name: zammad-redis
+    type: keyvalue
     plan: starter
-    autoDeploy: false
-    envVars:
-      - fromGroup: zammad-common
-      - key: REDIS_URL
-        fromService:
-          type: keyvalue
-          name: zammad-redis
-          property: connectionString
+    ipAllowList: []
 
-  # Rails app (must bind to $PORT=10000)
-  - name: zammad-railsserver
-    type: pserv
-    runtime: image
-    image:
-      url: ghcr.io/zammad/zammad:6.5.1
-    # Force Rails/Puma to listen on Render's $PORT
-    dockerCommand: >
-      bash -lc "export RAILS_BIND=0.0.0.0
-                export RAILS_PORT=${PORT}
-                exec /usr/local/bin/zammad-railsserver"
-    plan: standard
-    autoDeploy: false
-    envVars:
-      - fromGroup: zammad-common
-      - key: REDIS_URL
-        fromService:
-          type: keyvalue
-          name: zammad-redis
-          property: connectionString
-
-  # WebSocket app (must bind to $PORT=10000)
-  - name: zammad-websocket
-    type: pserv
-    runtime: image
-    image:
-      url: ghcr.io/zammad/zammad:6.5.1
-    dockerCommand: >
-      bash -lc "export WEBSOCKET_HOST=0.0.0.0
-                export WEBSOCKET_PORT=${PORT}
-                exec /usr/local/bin/zammad-websocket"
-    plan: starter
-    autoDeploy: false
-    envVars:
-      - fromGroup: zammad-common
-      - key: REDIS_URL
-        fromService:
-          type: keyvalue
-          name: zammad-redis
-          property: connectionString
-
-  # Memcached
+  # ──────────────────────────
+  # Memcached (internal)
+  # ──────────────────────────
   - name: zammad-memcached
     type: pserv
     runtime: image
@@ -96,8 +19,34 @@ services:
     plan: starter
     autoDeploy: false
 
-  # Redis-compatible KV
-  - name: zammad-redis
-    type: keyvalue
-    plan: starter
-    ipAllowList: []
+  # ──────────────────────────
+  # Rails app (internal) with preflight checks
+  # ──────────────────────────
+  - name: zammad-railsserver
+    type: pserv
+    runtime: image
+    image:
+      url: ghcr.io/zammad/zammad:6.5.1
+    # Preflight: verify required env vars, test TCP to Postgres & Memcached, ping Redis,
+    # then start Rails binding to Render's $PORT.
+    dockerCommand: /bin/sh -lc 'echo "===== railsserver preflight ====="; \
+      for v in POSTGRESQL_HOST POSTGRESQL_PORT POSTGRESQL_USER POSTGRESQL_PASS POSTGRESQL_DB REDIS_URL MEMCACHE_SERVERS; do \
+        eval val=\${$v}; if [ -z "$val" ]; then echo "MISSING: $v" && missing=1; else echo "$v=$val"; fi; \
+      done; \
+      [ "${missing:-0}" -eq 0 ] || { echo "❌ Missing required env(s)."; exit 2; }; \
+      bash -lc "cat </dev/null >/dev/tcp/$POSTGRESQL_HOST/$POSTGRESQL_PORT" >/dev/null 2>&1 \
+        && echo "Postgres TCP ✅" || { echo "Postgres TCP ❌"; exit 2; }; \
+      ruby -e '\''require "redis"; r=Redis.new(url: ENV["REDIS_URL"]); puts "Redis #{r.ping} ✅"'\'' >/dev/null 2>&1 \
+        || { echo "Redis ping ❌"; exit 2; }; \
+      bash -lc "cat </dev/null >/dev/tcp/zammad-memcached/11211" >/dev/null 2>&1 \
+        && echo "Memcached TCP ✅" || { echo "Memcached TCP ❌"; exit 2; }; \
+      echo "Starting Rails… PORT=$PORT"; RAILS_PORT=$PORT exec /usr/local/bin/zammad-railsserver'
+    plan: standard
+    autoDeploy: false
+    envVars:
+      - fromGroup: zammad-common         # your existing env group (must be in same Project/Environment)
+      - key: REDIS_URL                   # inject Redis connection from the managed Key Value service
+        fromService:
+          type: keyvalue
+          name: zammad-redis
+          property: connectionString
