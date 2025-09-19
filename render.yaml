@@ -1,9 +1,9 @@
 services:
-  - name: zammad-web
+  - name: zammad-nginx
     type: web
     env: docker
     dockerImage: ghcr.io/zammad/zammad:6.5.1
-    startCommand: bash -lc 'export NGINX_PORT=${PORT}; zammad-railsserver & zammad-websocket & exec zammad-nginx'
+    startCommand: bash -lc 'export NGINX_PORT=${PORT}; exec zammad-nginx'
     plan: standard
     autoDeploy: true
     envVarGroups:
@@ -25,7 +25,7 @@ services:
     env: docker
     dockerImage: ghcr.io/zammad/zammad:6.5.1
     startCommand: zammad-scheduler
-    plan: starter
+    plan: standard
     autoDeploy: true
     envVarGroups:
       - zammad-common
@@ -38,18 +38,50 @@ services:
 
   - name: zammad-redis
     type: redis
-    plan: starter
+    plan: standard
 
   - name: zammad-memcached
     type: private
     env: docker
     dockerImage: memcached:1.6.39-alpine
     startCommand: memcached -m 256 -o modern
-    plan: starter
+    plan: standard
     autoDeploy: true
     ports:
       - port: 11211
         protocol: tcp
+
+  - name: zammad-railsserver
+    type: private
+    env: docker
+    dockerImage: ghcr.io/zammad/zammad:6.5.1
+    startCommand: zammad-railsserver
+    plan: standard
+    autoDeploy: true
+    envVarGroups:
+      - zammad-common
+    envVars:
+      - key: REDIS_URL
+        fromService:
+          type: redis
+          name: zammad-redis
+          property: connectionString
+
+  - name: zammad-websocket
+    type: private
+    env: docker
+    dockerImage: ghcr.io/zammad/zammad:6.5.1
+    startCommand: zammad-websocket
+    plan: standard
+    autoDeploy: true
+    envVarGroups:
+      - zammad-common
+    envVars:
+      - key: REDIS_URL
+        fromService:
+          type: redis
+          name: zammad-redis
+          property: connectionString
 
 envVarGroups:
   - name: zammad-common
