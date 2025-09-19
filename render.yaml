@@ -9,33 +9,16 @@ services:
     healthCheckPath: /
     autoDeploy: false
     envVars:
-      - key: NGINX_SERVER_SCHEME
-        value: https
+      - fromGroup: zammad-common
       - key: REDIS_URL
         fromService:
           type: keyvalue
           name: zammad-redis
           property: connectionString
-      - fromGroup: zammad-common
     disk:
       name: zammad-storage
       mountPath: /opt/zammad/storage
       sizeGB: 100
-    preDeployCommand: >
-      bash -lc '
-        set -euo pipefail
-        req=(POSTGRESQL_HOST POSTGRESQL_USER POSTGRESQL_PASS POSTGRESQL_DB
-             ELASTICSEARCH_HOST ELASTICSEARCH_USER ELASTICSEARCH_PASS
-             ZAMMAD_FQDN ZAMMAD_HTTP_TYPE)
-        for v in "${req[@]}"; do
-          val="${!v:-}"
-          if [ -z "$val" ] || [ "$val" = "__REQUIRED__" ]; then
-            echo "❌ Missing required env: $v"; exit 2
-          fi
-        done
-        echo "✅ Env looks good; running zammad-init…"
-        zammad-init
-      '
 
   - name: zammad-scheduler
     type: worker
@@ -46,12 +29,12 @@ services:
     plan: starter
     autoDeploy: false
     envVars:
+      - fromGroup: zammad-common
       - key: REDIS_URL
         fromService:
           type: keyvalue
           name: zammad-redis
           property: connectionString
-      - fromGroup: zammad-common
 
   - name: zammad-railsserver
     type: pserv
@@ -62,12 +45,12 @@ services:
     plan: standard
     autoDeploy: false
     envVars:
+      - fromGroup: zammad-common
       - key: REDIS_URL
         fromService:
           type: keyvalue
           name: zammad-redis
           property: connectionString
-      - fromGroup: zammad-common
 
   - name: zammad-websocket
     type: pserv
@@ -78,12 +61,12 @@ services:
     plan: starter
     autoDeploy: false
     envVars:
+      - fromGroup: zammad-common
       - key: REDIS_URL
         fromService:
           type: keyvalue
           name: zammad-redis
           property: connectionString
-      - fromGroup: zammad-common
 
   - name: zammad-memcached
     type: pserv
@@ -98,46 +81,3 @@ services:
     type: keyvalue
     plan: starter
     ipAllowList: []
-
-envVarGroups:
-  - name: zammad-common
-    envVars:
-      # --- Postgres (Neon) ---
-      - key: POSTGRESQL_HOST
-        value: "__REQUIRED__"
-      - key: POSTGRESQL_PORT
-        value: "5432"
-      - key: POSTGRESQL_USER
-        value: "__REQUIRED__"
-      - key: POSTGRESQL_PASS
-        sync: false          # set in dashboard; no value here
-      - key: POSTGRESQL_DB
-        value: "__REQUIRED__"
-      - key: POSTGRESQL_OPTIONS
-        value: "?pool=50&sslmode=require"
-
-      # --- Elasticsearch (Elastic Cloud) ---
-      - key: ELASTICSEARCH_ENABLED
-        value: "true"
-      - key: ELASTICSEARCH_SCHEMA
-        value: https
-      - key: ELASTICSEARCH_HOST
-        value: "__REQUIRED__"
-      - key: ELASTICSEARCH_PORT
-        value: "443"
-      - key: ELASTICSEARCH_USER
-        value: "__REQUIRED__"
-      - key: ELASTICSEARCH_PASS
-        sync: false          # set in dashboard; no value here
-
-      # --- Cache ---
-      - key: MEMCACHE_SERVERS
-        value: zammad-memcached:11211
-
-      # --- App/general ---
-      - key: ZAMMAD_FQDN
-        value: "__REQUIRED__"
-      - key: ZAMMAD_HTTP_TYPE
-        value: https
-      - key: TZ
-        value: Africa/Addis_Ababa
