@@ -1,10 +1,18 @@
 services:
+  # Public entry (nginx)
   - name: zammad-nginx
     type: web
     runtime: image
     image:
       url: ghcr.io/zammad/zammad:6.5.1
-    startCommand: bash -lc "export NGINX_PORT=${PORT}; exec /usr/local/bin/zammad-nginx"
+    # Render provides $PORT; expose it to zammad-nginx and point upstreams to pservs' $PORT
+    dockerCommand: >
+      bash -lc "export NGINX_PORT=${PORT}
+                export NGINX_RAILS_HOST=zammad-railsserver
+                export NGINX_RAILS_PORT=10000
+                export NGINX_WEBSOCKET_HOST=zammad-websocket
+                export NGINX_WEBSOCKET_PORT=10000
+                exec /usr/local/bin/zammad-nginx"
     plan: standard
     healthCheckPath: /
     autoDeploy: false
@@ -20,12 +28,13 @@ services:
       mountPath: /opt/zammad/storage
       sizeGB: 100
 
+  # Background scheduler
   - name: zammad-scheduler
     type: worker
     runtime: image
     image:
       url: ghcr.io/zammad/zammad:6.5.1
-    startCommand: /usr/local/bin/zammad-scheduler
+    dockerCommand: /usr/local/bin/zammad-scheduler
     plan: starter
     autoDeploy: false
     envVars:
@@ -36,12 +45,17 @@ services:
           name: zammad-redis
           property: connectionString
 
+  # Rails app (must bind to $PORT=10000)
   - name: zammad-railsserver
     type: pserv
     runtime: image
     image:
       url: ghcr.io/zammad/zammad:6.5.1
-    startCommand: /usr/local/bin/zammad-railsserver
+    # Force Rails/Puma to listen on Render's $PORT
+    dockerCommand: >
+      bash -lc "export RAILS_BIND=0.0.0.0
+                export RAILS_PORT=${PORT}
+                exec /usr/local/bin/zammad-railsserver"
     plan: standard
     autoDeploy: false
     envVars:
@@ -52,12 +66,16 @@ services:
           name: zammad-redis
           property: connectionString
 
+  # WebSocket app (must bind to $PORT=10000)
   - name: zammad-websocket
     type: pserv
     runtime: image
     image:
       url: ghcr.io/zammad/zammad:6.5.1
-    startCommand: /usr/local/bin/zammad-websocket
+    dockerCommand: >
+      bash -lc "export WEBSOCKET_HOST=0.0.0.0
+                export WEBSOCKET_PORT=${PORT}
+                exec /usr/local/bin/zammad-websocket"
     plan: starter
     autoDeploy: false
     envVars:
@@ -68,15 +86,17 @@ services:
           name: zammad-redis
           property: connectionString
 
+  # Memcached
   - name: zammad-memcached
     type: pserv
     runtime: image
     image:
       url: memcached:1.6.39-alpine
-    startCommand: memcached -m 256 -o modern
+    dockerCommand: memcached -m 256 -o modern
     plan: starter
     autoDeploy: false
 
+  # Redis-compatible KV
   - name: zammad-redis
     type: keyvalue
     plan: starter
