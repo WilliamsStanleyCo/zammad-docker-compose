@@ -4,7 +4,7 @@ services:
     runtime: image
     image:
       url: ghcr.io/zammad/zammad:6.5.1
-    dockerCommand: bash -lc 'export NGINX_PORT=${PORT}; exec zammad-nginx'
+    startCommand: bash -lc "export NGINX_PORT=${PORT}; exec /usr/local/bin/zammad-nginx"
     plan: standard
     healthCheckPath: /
     autoDeploy: false
@@ -25,7 +25,7 @@ services:
     runtime: image
     image:
       url: ghcr.io/zammad/zammad:6.5.1
-    dockerCommand: zammad-scheduler
+    startCommand: /usr/local/bin/zammad-scheduler
     plan: starter
     autoDeploy: false
     envVars:
@@ -41,7 +41,7 @@ services:
     runtime: image
     image:
       url: ghcr.io/zammad/zammad:6.5.1
-    dockerCommand: zammad-railsserver
+    startCommand: /usr/local/bin/zammad-railsserver
     plan: standard
     autoDeploy: false
     envVars:
@@ -57,7 +57,7 @@ services:
     runtime: image
     image:
       url: ghcr.io/zammad/zammad:6.5.1
-    dockerCommand: zammad-websocket
+    startCommand: /usr/local/bin/zammad-websocket
     plan: starter
     autoDeploy: false
     envVars:
@@ -73,7 +73,7 @@ services:
     runtime: image
     image:
       url: memcached:1.6.39-alpine
-    dockerCommand: memcached -m 256 -o modern
+    startCommand: memcached -m 256 -o modern
     plan: starter
     autoDeploy: false
 
